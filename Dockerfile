@@ -1,5 +1,6 @@
 # Multi-stage build for Vite React TypeScript app
 # My docker file
+# This is my first demo-project 
 
 # Stage 1: Build the application
 FROM node:22-alpine AS builder
