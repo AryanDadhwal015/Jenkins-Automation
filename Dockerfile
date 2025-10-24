@@ -1,4 +1,5 @@
 # Multi-stage build for Vite React TypeScript app
+# Aryan first demo project
 
 # Stage 1: Build the application
 FROM node:24-alpine AS builder
