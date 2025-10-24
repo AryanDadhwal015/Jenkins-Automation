@@ -2,11 +2,10 @@ pipeline {
   agent { label 'slave-1' }
 
   environment {
-    GIT_REPO_URL       = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
-    BRANCH_NAME        = 'main'
-    IMAGE_BASE_NAME    = 'my-app'
-    CONTAINER_BASE_NAME= 'my-app'
-    GITHUB_CREDENTIALS = 'github-pat' // ID of the Jenkins secret
+    GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
+    BRANCH_NAME         = 'main'
+    IMAGE_BASE_NAME     = 'my-app'
+    CONTAINER_BASE_NAME = 'my-app'
   }
 
   stages {
@@ -16,8 +15,7 @@ pipeline {
         checkout([$class: 'GitSCM',
           branches: [[name: "${BRANCH_NAME}"]],
           userRemoteConfigs: [[
-            url: "${GIT_REPO_URL}",
-            credentialsId: "${GITHUB_CREDENTIALS}"
+            url: "${GIT_REPO_URL}"
           ]]
         ])
       }
