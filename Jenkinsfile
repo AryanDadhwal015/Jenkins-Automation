@@ -83,8 +83,8 @@ pipeline {
               --name ${CONTAINER_BASE_NAME} \
               -p 80:80 \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
-               echo "✅ Container started successfully and mapped to http://13.235.113.126:${HOST_PORT}"
           """
+          echo "✅ Container started successfully and mapped to http://13.235.113.126:${HOST_PORT}"
         }
       }
     }
