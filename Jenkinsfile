@@ -1,5 +1,5 @@
 pipeline {
-  agent { label 'slave-1' }
+  agent any
 
   environment {
     GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
