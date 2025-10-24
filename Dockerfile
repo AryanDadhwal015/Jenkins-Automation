@@ -1,5 +1,5 @@
 # Multi-stage build for Vite React TypeScript app
-# Stage 1: Build the application
+# Stage 1: Build the applications
 FROM node:22-alpine AS builder
 
 # Set working directory
