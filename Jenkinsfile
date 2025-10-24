@@ -1,5 +1,5 @@
 pipeline {
-  agent any
+  agent { label 'slave-1' }
 
   environment {
     GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
@@ -13,7 +13,7 @@ pipeline {
       steps {
         echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
         checkout([$class: 'GitSCM',
-          branches: [[name: "*/${BRANCH_NAME}"]],
+          branches: [[name: "${BRANCH_NAME}"]],
           userRemoteConfigs: [[
             url: "${GIT_REPO_URL}"
           ]]
