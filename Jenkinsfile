@@ -6,6 +6,8 @@ pipeline {
     BRANCH_NAME         = 'main'
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
+    HOST_PORT    = '80'
+     CONTAINER_PORT = '80'
   }
 
   stages {
@@ -81,6 +83,7 @@ pipeline {
               --name ${CONTAINER_BASE_NAME} \
               -p 80:80 \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+               echo "✅ Container started successfully and mapped to http://13.235.113.126:${HOST_PORT}"
           """
         }
       }
