@@ -67,9 +67,9 @@ pipeline {
       steps {
         script {
           def previousContainer = sh(
-            script: "docker ps -q -f name=${CONTAINER_BASE_NAME}",
+            script: "docker ps -aq -f name=${CONTAINER_BASE_NAME}",
             returnStdout: true
-          ).trim()
+            ).trim()
 
           if (previousContainer) {
             echo "Stopping previous container: ${previousContainer}"
