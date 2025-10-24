@@ -2,17 +2,24 @@ pipeline {
   agent { label 'slave-1' }
 
   environment {
-    GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
-    BRANCH_NAME  = 'main'
-    IMAGE_BASE_NAME = 'my-app'
-    CONTAINER_BASE_NAME = 'my-app'
+    GIT_REPO_URL       = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
+    BRANCH_NAME        = 'main'
+    IMAGE_BASE_NAME    = 'my-app'
+    CONTAINER_BASE_NAME= 'my-app'
+    GITHUB_CREDENTIALS = 'github-pat' // ID of the Jenkins secret
   }
 
   stages {
     stage('Clone from GitHub') {
       steps {
         echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
-        git branch: "${BRANCH_NAME}", url: "${GIT_REPO_URL}"
+        checkout([$class: 'GitSCM',
+          branches: [[name: "${BRANCH_NAME}"]],
+          userRemoteConfigs: [[
+            url: "${GIT_REPO_URL}",
+            credentialsId: "${GITHUB_CREDENTIALS}"
+          ]]
+        ])
       }
     }
 
