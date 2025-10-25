@@ -58,33 +58,35 @@ pipeline {
   }
 }
 
+  stage('Deploy Container') {
+    steps {
+      script {
+        // Sanitize branch name again for Docker tag safety
+        def branchName = env.BRANCH_NAME ?: 'local'
+        def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').replaceAll('/', '-').toLowerCase()
+        def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
 
+        def previousContainer = sh(
+          script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
+          returnStdout: true
+        ).trim()
 
-    stage('Deploy Container') {
-      steps {
-        script {
-          def previousContainer = sh(
-            script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
-            returnStdout: true
-          ).trim()
-
-          if (previousContainer) {
-            echo "Stopping previous container: ${previousContainer}"
-            sh "docker stop ${previousContainer}"
-            sh "docker rm ${previousContainer}"
-          }
-
-          echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
-          sh """
-            docker run -d \
-              --name ${env.CONTAINER_BASE_NAME} \
-              -p 80:80 \
-              ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
-          """
-
-          echo "Container deployed successfully! Your application is serving on http://${env.SERVER_IP}:80"
+        if (previousContainer) {
+          echo "Stopping previous container: ${previousContainer}"
+          sh "docker stop ${previousContainer}"
+          sh "docker rm ${previousContainer}"
         }
-      }
+
+        echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${imageTag}"
+        sh """
+          docker run -d \
+            --name ${env.CONTAINER_BASE_NAME} \
+            -p 80:80 \
+            ${env.IMAGE_BASE_NAME}:${imageTag}
+        """
+
+        echo "Container deployed successfully! Your application is serving on http://${env.SERVER_IP}:80"
     }
   }
 }
+
