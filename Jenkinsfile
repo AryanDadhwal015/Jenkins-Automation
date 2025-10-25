@@ -8,7 +8,7 @@ pipeline {
     CONTAINER_BASE_NAME = 'my-app'
     HOST_PORT           = '80'
     CONTAINER_PORT      = '80'
-    INSTANCE_IP         = '13.235.113.126' // <-- Change it to your IP address 
+    INSTANCE_IP         = '35.154.161.144' // <-- Change it to your IP address 
   }
 
   stages {
