@@ -10,7 +10,7 @@ pipeline {
     BUILD_DIR = 'dist'
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    SERVER_IP = '13.201.117.191'
+    SERVER_IP = '3.110.161.82'
   }
 
   stages {
@@ -26,13 +26,16 @@ pipeline {
         script {
           // Sanitize branch name for Docker image tag
           def branchName = env.BRANCH_NAME ?: 'local'
-          def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').replaceAll('/', '-').toLowerCase()
+          def sanitizedBranch = branchName
+                                  .replaceAll('[^a-zA-Z0-9_.-]', '-')
+                                  .replaceAll('/', '-')
+                                  .toLowerCase()
           def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
 
           echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${imageTag}"
           sh "docker build -t ${env.IMAGE_BASE_NAME}:${imageTag} ."
 
-          // Update environment variable for later stages
+          // Save tag for later stage
           env.IMAGE_TAG = imageTag
         }
       }
@@ -41,9 +44,6 @@ pipeline {
     stage('Deploy Container') {
       steps {
         script {
-          // Always use sanitized image tag
-          def imageTag = env.IMAGE_TAG
-
           def previousContainer = sh(
             script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
             returnStdout: true
@@ -55,19 +55,19 @@ pipeline {
             sh "docker rm ${previousContainer}"
           }
 
-          echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${imageTag}"
-          sh "docker run -d --name ${env.CONTAINER_BASE_NAME} -p 80:80 ${env.IMAGE_BASE_NAME}:${imageTag}"
+          echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
+          sh """
+            docker run -d \
+              --name ${env.CONTAINER_BASE_NAME} \
+              -p 80:80 \
+              ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
+          """
 
           echo "Container deployed successfully! Your application is serving on http://${env.SERVER_IP}:80"
         }
       }
     }
 
-  } // end stages
-} // end pipeline
-
-
-    // 👇 Add this new stage at the very end
     stage('Post Comment to GitHub PR') {
       when {
         expression { return env.CHANGE_ID != null } // only runs for PR builds
@@ -96,6 +96,6 @@ pipeline {
         }
       }
     }
+
   } // end stages
 } // end pipeline
-
