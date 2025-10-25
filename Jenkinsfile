@@ -1,9 +1,7 @@
 pipeline {
   agent any
 
-  parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'feat/deploy-test', description: 'Git branch to build')
-  }
+
 
   environment {
     DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
