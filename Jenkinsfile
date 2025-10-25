@@ -6,48 +6,60 @@ pipeline {
   }
 
   environment {
-    GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
+    // Ensure a sensible default so preview/dev SCP deploys run when DEPLOY_METHOD isn't set in Jenkins
+    DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
+    BUILD_DIR = 'dist'
+    // Image tag uses branch name and build number when available
+    IMAGE_TAG = "${env.BRANCH_NAME ?: 'local'}-${env.BUILD_NUMBER ?: '0'}"
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    HOST_PORT           = '80'
-    CONTAINER_PORT      = '80'
-    INSTANCE_IP         = '35.154.161.144' // <-- Change it to your IP address 
+    SERVER_IP = '3.110.161.82' // <-- Change the IP with the actual IP of your Server
   }
 
   stages {
-    stage('Clone from GitHub') {
+
+    stage('Checkout') {
       steps {
-        echo "Cloning ${GIT_REPO_URL} (branch: ${params.BRANCH_NAME}) ..."
-        checkout([$class: 'GitSCM',
-          branches: [[name: "${params.BRANCH_NAME}"]],
-          userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
-        ])
+        checkout scm
       }
     }
-        
-  stage('Build Docker Image') {
-        steps {
-            script {
-                  def sanitizedBranch = (env.BRANCH_NAME ?: 'local')
-                                          .replaceAll('[^a-zA-Z0-9_.-]', '-')
-                                          .toLowerCase()
-                    env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
 
-                    echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
-                    sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
-                }
-            }
+    // Quick debug to confirm branch and deploy method used by the pipeline
+    stage('Print Config') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'preview-path', variable: 'PREVIEW_PATH'),
+          string(credentialsId: 'dev-deploy-path', variable: 'DEV_DEPLOY_PATH'),
+          string(credentialsId: 'preview-server', variable: 'PREVIEW_SERVER')
+        ]) {
+          echo "Branch: ${env.BRANCH_NAME ?: 'local'}"
+          echo "DEPLOY_METHOD: ${env.DEPLOY_METHOD}"
+          echo "PREVIEW_PATH (from credentials): ${PREVIEW_PATH}"
+          echo "DEV_DEPLOY_PATH (from credentials): ${DEV_DEPLOY_PATH}"
+          echo "PREVIEW_SERVER (from credentials): ${PREVIEW_SERVER}"
         }
-    
-    
-    
+      }
+    }
 
+    stage('Build Docker Image') {
+      steps {
+        script {
+          def sanitizedBranch = (env.BRANCH_NAME ?: 'local')
+                                  .replaceAll('[^a-zA-Z0-9_.-]', '-')
+                                  .toLowerCase()
+          env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
+
+          echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
+          sh "docker build -t ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG} ."
+        }
+      }
+    }
 
     stage('Deploy Container') {
       steps {
         script {
           def previousContainer = sh(
-            script: "docker ps -aq -f name=${CONTAINER_BASE_NAME}",
+            script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
             returnStdout: true
           ).trim()
 
@@ -57,26 +69,17 @@ pipeline {
             sh "docker rm ${previousContainer}"
           }
 
-          echo "Starting new container with image ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
           sh """
             docker run -d \
-              --name ${CONTAINER_BASE_NAME} \
-              -p ${HOST_PORT}:${CONTAINER_PORT} \
-              ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+              --name ${env.CONTAINER_BASE_NAME} \
+              -p 80:80 \
+              ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
           """
-          echo "✅ Container started successfully and mapped to http://${INSTANCE_IP}:${HOST_PORT}"
+
+          echo "Container deployed successfully! Your application is serving on http://${env.SERVER_IP}:80"
         }
       }
-    }
-  }
-
-  post {
-    success {
-      echo "✅ Deployment successful!"
-      sh "docker ps"
-    }
-    failure {
-      echo "❌ Deployment failed. Check logs above."
     }
   }
 }
