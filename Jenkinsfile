@@ -41,21 +41,23 @@ pipeline {
     //   }
     // }
 
-     stage('Build Docker Image') {
-      steps {
-        script {
-          // Sanitize branch name for Docker tag
-          def sanitizedBranch = (env.BRANCH_NAME ?: 'local')
-                                  .replaceAll('[^a-zA-Z0-9_.-]', '-') // Replace invalid chars
-                                  .toLowerCase()
-    
-          env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
-    
-          echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
-          sh "docker build -t ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG} ."
+  stage('Build Docker Image') {
+    steps {
+      script {
+        // Sanitize the branch name for Docker compatibility
+        def branchName = env.BRANCH_NAME ?: 'local'
+        def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
+        def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
+  
+        echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${imageTag}"
+        sh "docker build -t ${env.IMAGE_BASE_NAME}:${imageTag} ."
+  
+        // Update environment variable for later stages
+        env.IMAGE_TAG = imageTag
     }
   }
 }
+
 
 
     stage('Deploy Container') {
