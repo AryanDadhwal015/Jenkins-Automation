@@ -24,22 +24,22 @@ pipeline {
       }
     }
 
-    // Quick debug to confirm branch and deploy method used by the pipeline
-    stage('Print Config') {
-      steps {
-        withCredentials([
-          string(credentialsId: 'preview-path', variable: 'PREVIEW_PATH'),
-          string(credentialsId: 'dev-deploy-path', variable: 'DEV_DEPLOY_PATH'),
-          string(credentialsId: 'preview-server', variable: 'PREVIEW_SERVER')
-        ]) {
-          echo "Branch: ${env.BRANCH_NAME ?: 'local'}"
-          echo "DEPLOY_METHOD: ${env.DEPLOY_METHOD}"
-          echo "PREVIEW_PATH (from credentials): ${PREVIEW_PATH}"
-          echo "DEV_DEPLOY_PATH (from credentials): ${DEV_DEPLOY_PATH}"
-          echo "PREVIEW_SERVER (from credentials): ${PREVIEW_SERVER}"
-        }
-      }
-    }
+    // // Quick debug to confirm branch and deploy method used by the pipeline
+    // stage('Print Config') {
+    //   steps {
+    //     withCredentials([
+    //       string(credentialsId: 'preview-path', variable: 'PREVIEW_PATH'),
+    //       string(credentialsId: 'dev-deploy-path', variable: 'DEV_DEPLOY_PATH'),
+    //       string(credentialsId: 'preview-server', variable: 'PREVIEW_SERVER')
+    //     ]) {
+    //       echo "Branch: ${env.BRANCH_NAME ?: 'local'}"
+    //       echo "DEPLOY_METHOD: ${env.DEPLOY_METHOD}"
+    //       echo "PREVIEW_PATH (from credentials): ${PREVIEW_PATH}"
+    //       echo "DEV_DEPLOY_PATH (from credentials): ${DEV_DEPLOY_PATH}"
+    //       echo "PREVIEW_SERVER (from credentials): ${PREVIEW_SERVER}"
+    //     }
+    //   }
+    // }
 
     stage('Build Docker Image') {
       steps {
