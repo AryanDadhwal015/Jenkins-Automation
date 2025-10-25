@@ -65,3 +65,37 @@ pipeline {
 
   } // end stages
 } // end pipeline
+
+
+    // 👇 Add this new stage at the very end
+    stage('Post Comment to GitHub PR') {
+      when {
+        expression { return env.CHANGE_ID != null } // only runs for PR builds
+      }
+      steps {
+        script {
+          def prNumber = env.CHANGE_ID
+          def repoUrl = env.GIT_URL
+          def apiUrl = repoUrl
+              .replace('https://github.com/', 'https://api.github.com/repos/')
+              .replace('.git', '') + "/issues/${prNumber}/comments"
+
+          def message = "🚀 Deployed successfully! Preview URL: http://${env.SERVER_IP}:80"
+
+          withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+            sh """
+              curl -X POST \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"body": "${message.replaceAll('"', '\\"')}"}' \
+                ${apiUrl}
+            """
+          }
+
+          echo "Posted deployment comment to GitHub PR #${prNumber}"
+        }
+      }
+    }
+  } // end stages
+} // end pipeline
+
