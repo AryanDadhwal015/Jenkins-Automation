@@ -69,9 +69,9 @@ pipeline {
     }
 
     stage('Post Comment to GitHub PR') {
-      when {
-        expression { return env.CHANGE_ID != null } // only runs for PR builds
-      }
+      // when {
+      //   expression { return env.CHANGE_ID != null } // only runs for PR builds
+      // }
       steps {
         script {
           def prNumber = env.CHANGE_ID
