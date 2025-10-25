@@ -68,31 +68,34 @@ pipeline {
       }
     }
 
-    stage('Post Comment to GitHub PR') {
-      when {
-        expression { return env.CHANGE_ID != null } // only runs for PR builds
-      }
+   stage('Post or Print URL') {
       steps {
         script {
-          def prNumber = env.CHANGE_ID
-          def repoUrl = env.GIT_URL
-          def apiUrl = repoUrl
-              .replace('https://github.com/', 'https://api.github.com/repos/')
-              .replace('.git', '') + "/issues/${prNumber}/comments"
+          def previewUrl = "http://${env.SERVER_IP}:80"
 
-          def message = "🚀 Deployed successfully! Preview URL: http://${env.SERVER_IP}:80"
+          if (env.CHANGE_ID) {
+            // 🟢 Case 1: Running for a PR — post comment on GitHub
+            def prNumber = env.CHANGE_ID
+            def repoUrl = env.GIT_URL
+            def apiUrl = repoUrl
+                .replace('https://github.com/', 'https://api.github.com/repos/')
+                .replace('.git', '') + "/issues/${prNumber}/comments"
 
-          withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-            sh """
-              curl -X POST \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Content-Type: application/json" \
-                -d '{"body": "${message.replaceAll('"', '\\"')}"}' \
-                ${apiUrl}
-            """
+            withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+              sh """
+                curl -X POST \
+                  -H "Authorization: token ${GITHUB_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"body": "${previewUrl}"}' \
+                  ${apiUrl}
+              """
+            }
+
+            echo "Posted deployment URL to GitHub PR #${prNumber}: ${previewUrl}"
+          } else {
+            // 🟡 Case 2: Normal/manual run — just print the URL in console
+            echo "Application deployed successfully! Access it at: ${previewUrl}"
           }
-
-          echo "Posted deployment comment to GitHub PR #${prNumber}"
         }
       }
     }
