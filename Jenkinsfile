@@ -1,9 +1,12 @@
 pipeline {
   agent any
 
+  parameters {
+    string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git branch to build')
+  }
+
   environment {
     GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
-    BRANCH_NAME         = 'main'
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
     HOST_PORT           = '80'
@@ -14,45 +17,18 @@ pipeline {
   stages {
     stage('Clone from GitHub') {
       steps {
-        echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
+        echo "Cloning ${GIT_REPO_URL} (branch: ${params.BRANCH_NAME}) ..."
         checkout([$class: 'GitSCM',
-          branches: [[name: "${BRANCH_NAME}"]],
+          branches: [[name: "${params.BRANCH_NAME}"]],
           userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
         ])
-      }
-    }
-
-    stage('Install Docker (if not present)') {
-      steps {
-        script {
-          sh '''
-            if ! which docker > /dev/null 2>&1; then
-              sudo apt-get update -y
-              sudo apt-get install -y ca-certificates curl gnupg lsb-release
-
-              sudo mkdir -p /etc/apt/keyrings
-              sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-              sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-              echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-              
-              sudo apt-get update -y
-              sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-              sudo usermod -aG docker $(whoami)
-              sudo systemctl enable docker
-              sudo systemctl start docker
-            fi
-            docker --version
-          '''
-        }
       }
     }
 
     stage('Build Docker Image') {
       steps {
         script {
-          env.IMAGE_TAG = "${env.BUILD_NUMBER}"
+          env.IMAGE_TAG = "${params.BRANCH_NAME}-${env.BUILD_NUMBER}"
           echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
           sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
         }
