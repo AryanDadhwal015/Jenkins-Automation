@@ -24,16 +24,24 @@ pipeline {
         ])
       }
     }
+        
+  stage('Build Docker Image') {
+        steps {
+            script {
+                  def sanitizedBranch = (env.BRANCH_NAME ?: 'local')
+                                          .replaceAll('[^a-zA-Z0-9_.-]', '-')
+                                          .toLowerCase()
+                    env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
 
-    stage('Build Docker Image') {
-      steps {
-        script {
-          env.IMAGE_TAG = "${params.BRANCH_NAME}-${env.BUILD_NUMBER}"
-          echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
-          sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
+                    echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+                    sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
+                }
+            }
         }
-      }
-    }
+    
+    
+    
+
 
     stage('Deploy Container') {
       steps {
