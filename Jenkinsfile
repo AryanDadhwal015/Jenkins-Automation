@@ -10,7 +10,7 @@ pipeline {
     BUILD_DIR = 'dist'
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    SERVER_IP = '3.110.161.82'
+    SERVER_IP = '13.201.117.191'
   }
 
   stages {
