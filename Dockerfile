@@ -1,6 +1,7 @@
-# Multi-stage build for Vite React TypeScript app
-# Stage 1: Build the applications
-FROM node:22-alpine AS builder
+
+# Stage 1: Build the application
+# updated aryan file
+FROM node:24-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -9,7 +10,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN npm ci --only=production=false
+RUN npm ci --only=dev
 
 # Copy source code
 COPY . .

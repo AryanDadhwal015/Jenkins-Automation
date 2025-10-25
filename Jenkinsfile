@@ -2,35 +2,41 @@ pipeline {
   agent any
 
   parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git branch to build')
+    string(name: 'BRANCH_NAME', defaultValue: 'feat/deploy-test', description: 'Git branch to build')
   }
 
   environment {
-    GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
+    DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
+    BUILD_DIR = 'dist'
     IMAGE_BASE_NAME     = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    HOST_PORT           = '80'
-    CONTAINER_PORT      = '80'
-    INSTANCE_IP         = '35.154.161.144' // <-- Change it to your IP address 
+    SERVER_IP = '13.201.117.191'
   }
 
   stages {
-    stage('Clone from GitHub') {
+
+    stage('Checkout') {
       steps {
-        echo "Cloning ${GIT_REPO_URL} (branch: ${params.BRANCH_NAME}) ..."
-        checkout([$class: 'GitSCM',
-          branches: [[name: "${params.BRANCH_NAME}"]],
-          userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
-        ])
+        checkout scm
       }
     }
 
     stage('Build Docker Image') {
       steps {
         script {
-          env.IMAGE_TAG = "${params.BRANCH_NAME}-${env.BUILD_NUMBER}"
-          echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
-          sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
+          // Sanitize branch name for Docker image tag
+          def branchName = env.BRANCH_NAME ?: 'local'
+          def sanitizedBranch = branchName
+                                  .replaceAll('[^a-zA-Z0-9_.-]', '-')
+                                  .replaceAll('/', '-')
+                                  .toLowerCase()
+          def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
+
+          echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${imageTag}"
+          sh "docker build -t ${env.IMAGE_BASE_NAME}:${imageTag} ."
+
+          // Save tag for later stage
+          env.IMAGE_TAG = imageTag
         }
       }
     }
@@ -39,7 +45,7 @@ pipeline {
       steps {
         script {
           def previousContainer = sh(
-            script: "docker ps -aq -f name=${CONTAINER_BASE_NAME}",
+            script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
             returnStdout: true
           ).trim()
 
@@ -49,26 +55,47 @@ pipeline {
             sh "docker rm ${previousContainer}"
           }
 
-          echo "Starting new container with image ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
           sh """
             docker run -d \
-              --name ${CONTAINER_BASE_NAME} \
-              -p ${HOST_PORT}:${CONTAINER_PORT} \
-              ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+              --name ${env.CONTAINER_BASE_NAME} \
+              -p 80:80 \
+              ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
           """
-          echo "✅ Container started successfully and mapped to http://${INSTANCE_IP}:${HOST_PORT}"
+
+          echo "Container deployed successfully! Your application is serving on http://${env.SERVER_IP}:80"
         }
       }
     }
-  }
 
-  post {
-    success {
-      echo "✅ Deployment successful!"
-      sh "docker ps"
+    stage('Post Comment to GitHub PR') {
+      when {
+        expression { return env.CHANGE_ID != null } // only runs for PR builds
+      }
+      steps {
+        script {
+          def prNumber = env.CHANGE_ID
+          def repoUrl = env.GIT_URL
+          def apiUrl = repoUrl
+              .replace('https://github.com/', 'https://api.github.com/repos/')
+              .replace('.git', '') + "/issues/${prNumber}/comments"
+
+          def message = "🚀 Deployed successfully! Preview URL: http://${env.SERVER_IP}:80"
+
+          withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+            sh """
+              curl -X POST \
+                -H "Authorization: token ${GITHUB_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d '{"body": "${message.replaceAll('"', '\\"')}"}' \
+                ${apiUrl}
+            """
+          }
+
+          echo "Posted deployment comment to GitHub PR #${prNumber}"
+        }
+      }
     }
-    failure {
-      echo "❌ Deployment failed. Check logs above."
-    }
-  }
-}
+
+  } // end stages
+} // end pipeline
