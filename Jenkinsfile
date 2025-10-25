@@ -26,7 +26,7 @@ pipeline {
       steps {
         script {
           sh '''
-            if ! command -v docker &> /dev/null; then
+            if ! which docker > /dev/null 2>&1; then
               sudo apt-get update -y
               sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
