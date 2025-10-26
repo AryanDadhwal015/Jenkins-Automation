@@ -62,13 +62,13 @@ pipeline {
                     def previousContainer = sh(
                         script: "docker ps -aq -f name=${containerName}",
                         returnStdout: true,
-                        quiet: true
+                        // quiet: true // Remove 'quiet: true' to avoid the Jenkins WARNING
                     ).trim()
 
                     if (previousContainer) {
                         echo "Stopping and removing previous container: ${previousContainer}"
                         sh "docker stop ${previousContainer}"
-                        // sh "docker rm ${previousContainer}"
+                        sh "docker rm ${previousContainer}" // <-- ADDED BACK 'docker rm' for cleanup
                     }
 
                     // 3. Start new container with unique host port mapped to internal port 80
@@ -143,7 +143,7 @@ pipeline {
                     def previousContainer = sh(
                         script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
                         returnStdout: true,
-                        quiet: true
+                        // quiet: true // Remove 'quiet: true' to avoid the Jenkins WARNING
                     ).trim()
 
                     if (previousContainer) {
