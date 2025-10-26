@@ -76,7 +76,7 @@ pipeline {
                     sh """
                       docker run -d \\
                         --name ${containerName} \\
-                        -p ${env.DEPLOY_PORT}:80 \\ // Maps unique host port to internal port 80
+                        -p ${env.DEPLOY_PORT}:80 \\ 
                         ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
                     """
                     echo "Access URL: ${env.DEPLOY_URL}"
