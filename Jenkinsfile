@@ -5,7 +5,7 @@ pipeline {
 
     environment {
         // --- Deployment Variables ---
-        SERVER_IP = '13.201.117.191'
+        SERVER_IP = '13.233.134.67'
         IMAGE_BASE_NAME = 'my-app'
         CONTAINER_BASE_NAME = 'my-app'
 
