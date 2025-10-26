@@ -98,7 +98,7 @@ pipeline {
             steps {
                 script {
                     // Securely get the GitHub token from Jenkins Credentials
-                    withCredentials([string(credentialsId: 'github-token', variable: 'TOKEN')]) {
+                    withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
                         
                         def repoOwner = 'AryanDadhwal015  ' // <<--- CHANGE ME
                         def repoName = 'Jenkins-Automation'   // <<--- CHANGE ME
