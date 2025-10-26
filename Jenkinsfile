@@ -68,7 +68,7 @@ pipeline {
                     if (previousContainer) {
                         echo "Stopping and removing previous container: ${previousContainer}"
                         sh "docker stop ${previousContainer}"
-                        sh "docker rm ${previousContainer}"
+                        // sh "docker rm ${previousContainer}"
                     }
 
                     // 3. Start new container with unique host port mapped to internal port 80
