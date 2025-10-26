@@ -1,23 +1,23 @@
-// NOTE: This assumes your Jenkins setup provides PR info via the 'CHANGE_ID' environment variable.
-// It also assumes you have a secret credential named 'GITHUB_PR_TOKEN' for posting the comment
+import groovy.json.JsonOutput
 
 pipeline {
     agent any
 
     environment {
-        // --- Existing Variables ---
-        DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
-        BUILD_DIR = 'dist'
+        // --- Deployment Variables ---
+        SERVER_IP = '13.201.117.191'
         IMAGE_BASE_NAME = 'my-app'
         CONTAINER_BASE_NAME = 'my-app'
-        SERVER_IP = '13.201.117.191' // <-- The IP where the Jenkins agent/Docker host is running
 
-        // --- New Variables for PR Deployment ---
-        PR_ID = "${env.CHANGE_ID ?: ''}" // Get Pull Request ID (if building a PR)
-        // Use the BUILD_NUMBER for a unique port mapping (e.g., 10001, 10002, etc.)
-        // Default to a high port if BUILD_NUMBER is not set, or ensure it's a number.
+        // --- SCM/PR Variables (Set automatically by Multibranch Pipeline) ---
+        // Fallback PR_ID to empty string if not a PR build
+        PR_ID = "${env.CHANGE_ID ?: ''}" 
+        
+        // Calculate a unique port for preview environments (starts from 10001)
         DEPLOY_PORT = "${env.BUILD_NUMBER ? 10000 + env.BUILD_NUMBER.toInteger() : 30000}"
-        DEPLOY_URL = '' // Placeholder for the final access URL
+        
+        // Placeholder for the final URL
+        DEPLOY_URL = ''
     }
 
     stages {
@@ -31,34 +31,34 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Sanitize branch name for Docker image tag
+                    // Create a sanitized tag for the image
                     def branchName = env.BRANCH_NAME ?: 'local'
-                    def sanitizedBranch = branchName
-                                                .replaceAll('[^a-zA-Z0-9_.-]', '-')
-                                                .replaceAll('/', '-')
-                                                .toLowerCase()
+                    def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').replaceAll('/', '-').toLowerCase()
                     def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
 
                     echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${imageTag}"
                     sh "docker build -t ${env.IMAGE_BASE_NAME}:${imageTag} ."
-
-                    // Save tag for later stage
+                    
                     env.IMAGE_TAG = imageTag
                 }
             }
         }
 
+        // ---------------------------------------------------------------------
+        // STAGE 3: DEPLOY PREVIEW ENVIRONMENT (ONLY ON PR BUILD)
+        // ---------------------------------------------------------------------
         stage('Deploy Preview Container') {
-            // This stage only runs if we are building a Pull Request
             when {
-                expression { return env.PR_ID != '' }
+                expression { return env.PR_ID != '' } // Only runs if PR_ID (CHANGE_ID) is set
             }
             steps {
                 script {
                     def containerName = "${env.CONTAINER_BASE_NAME}-pr-${env.PR_ID}"
+                    
+                    // 1. Set the final access URL (using the unique port)
                     env.DEPLOY_URL = "http://${env.SERVER_IP}:${env.DEPLOY_PORT}"
 
-                    // 1. Check, Stop, and REMOVE previous container for this PR
+                    // 2. Check, Stop, and REMOVE previous container for this PR
                     def previousContainer = sh(
                         script: "docker ps -aq -f name=${containerName}",
                         returnStdout: true,
@@ -71,27 +71,26 @@ pipeline {
                         sh "docker rm ${previousContainer}"
                     }
 
-                    // 2. Start new container with unique port mapping
-                    echo "Starting new container '${containerName}' using unique port ${env.DEPLOY_PORT}..."
+                    // 3. Start new container with unique host port mapped to internal port 80
+                    echo "Starting new container '${containerName}' on port ${env.DEPLOY_PORT}..."
                     sh """
                       docker run -d \\
                         --name ${containerName} \\
-                        -p ${env.DEPLOY_PORT}:80 \\
+                        -p ${env.DEPLOY_PORT}:80 \\ // Maps unique host port to internal port 80
                         ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
                     """
-
-                    echo "Preview application deployed successfully!"
                     echo "Access URL: ${env.DEPLOY_URL}"
                 }
             }
         }
         
+        // ---------------------------------------------------------------------
+        // STAGE 4: NOTIFY PULL REQUEST (ONLY ON SUCCESSFUL PR DEPLOYMENT)
+        // ---------------------------------------------------------------------
         stage('Notify Pull Request') {
-            // This stage runs only if it was a PR build AND the deployment succeeded
             when {
                 allOf {
                     expression { return env.PR_ID != '' }
-                    // Only post comment if the stage before it was successful
                     expression { return currentBuild.result == null || currentBuild.result == 'SUCCESS' }
                 }
             }
@@ -100,9 +99,11 @@ pipeline {
                     // Securely get the GitHub token from Jenkins Credentials
                     withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
                         
-                        def repoOwner = 'AryanDadhwal015  ' // <<--- CHANGE ME
-                        def repoName = 'Jenkins-Automation'   // <<--- CHANGE ME
+                        // --- REPO NAMES (MUST BE CLEAN, NO SPACES) ---
+                        def repoOwner = 'AryanDadhwal015'
+                        def repoName = 'Jenkins-Automation'
                         
+                        // Create the multi-line comment body
                         def commentBody = """
                         🎉 **Preview Environment Ready!** 🎉
                         
@@ -112,27 +113,33 @@ pipeline {
                         
                         **Image Tag:** ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
                         """
+
+                        // Safely convert the comment body into a JSON string
+                        def jsonPayload = JsonOutput.toJson([body: commentBody])
                         
-                        // Use the GitHub API to post the comment
+                        // Execute curl command (using secure, escaped interpolation)
                         sh """
-                        curl -i -X POST \
-                          -H "Authorization: token ${TOKEN}" \
-                          -d '{"body": "${commentBody}"}' \
-                          "https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.PR_ID}/comments"
+                            curl -i -X POST \\
+                              -H "Authorization: token \\\$TOKEN" \\ // SECURE: Groovy ignores, Bash interpolates
+                              -H "Content-Type: application/json" \\
+                              -d '${jsonPayload}' \\               // SAFE: JSON payload wrapped in single quotes
+                              "https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.PR_ID}/comments"
                         """
                     }
                 }
             }
         }
 
-        stage('Clean Up Non-PR Deployment (Original Logic)') {
-            // This stage runs if it was NOT a Pull Request build (e.g., a main branch build)
+        // ---------------------------------------------------------------------
+        // STAGE 5: CLEAN UP/MAIN DEPLOYMENT (ONLY ON NON-PR BUILD)
+        // ---------------------------------------------------------------------
+        stage('Clean Up Non-PR Deployment') {
             when {
-                expression { return env.PR_ID == '' }
+                expression { return env.PR_ID == '' } // Only runs if PR_ID is NOT set (e.g., merge to main)
             }
             steps {
                 script {
-                    // This is your original deployment logic for single container on port 80
+                    // Standard cleanup and deployment to port 80 for main branch
                     def previousContainer = sh(
                         script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}",
                         returnStdout: true,
@@ -145,15 +152,13 @@ pipeline {
                         sh "docker rm ${previousContainer}"
                     }
 
-                    echo "Starting new container with image ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG} on port 80"
+                    echo "Starting production container on http://${env.SERVER_IP}:80"
                     sh """
                         docker run -d \\
                             --name ${env.CONTAINER_BASE_NAME} \\
-                            -p 80:80 \\
+                            -p 80:80 \\ 
                             ${env.IMAGE_BASE_NAME}:${env.IMAGE_TAG}
                     """
-
-                    echo "Production container deployed successfully on http://${env.SERVER_IP}:80"
                 }
             }
         }
