@@ -1,5 +1,5 @@
 // NOTE: This assumes your Jenkins setup provides PR info via the 'CHANGE_ID' environment variable.
-// It also assumes you have a secret credential named 'GITHUB_PR_TOKEN' for posting the comment.
+// It also assumes you have a secret credential named 'GITHUB_PR_TOKEN' for posting the comment
 
 pipeline {
     agent any
