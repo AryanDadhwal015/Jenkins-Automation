@@ -41,36 +41,42 @@ pipeline {
         script {
           def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
 
-          // 🧠 Dynamically find an available host port starting from 10000
+          // 🧠 Decide port range based on build type
+          def portRangeStart = env.CHANGE_ID ? 10000 : 11001
+          def portRangeEnd   = env.CHANGE_ID ? 11000 : 12000
+
+          echo "🔧 Build type: ${env.CHANGE_ID ? 'Pull Request' : 'Merge/Commit'}"
+          echo "🔍 Searching available port in range ${portRangeStart}-${portRangeEnd}..."
+
+          // Find available host port in selected range
           def HOST_PORT = sh(
-            script: '''
-              for port in $(seq 10000 11000); do
-                if ! sudo netstat -tuln | awk '{print $4}' | grep -q ":$port$"; then
-                  echo $port
+            script: """
+              for port in \$(seq ${portRangeStart} ${portRangeEnd}); do
+                if ! sudo netstat -tuln | awk '{print \$4}' | grep -q ":\\\$port\$"; then
+                  echo \\\$port
                   break
                 fi
               done
-            ''',
+            """,
             returnStdout: true
           ).trim()
 
           if (!HOST_PORT) {
-            error("❌ Could not find an available port in range 10000–11000!")
+            error("❌ No available port found in range ${portRangeStart}-${portRangeEnd}!")
           }
 
           def url = "http://${INSTANCE_IP}:${HOST_PORT}"
+          echo "🧩 Using host port: ${HOST_PORT}"
 
-          echo "🧩 Using dynamic host port: ${HOST_PORT}"
-
-          // Stop and remove any old container with the same name
+          // Stop and remove existing container with same branch
           def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
           if (existing) {
             echo "Stopping previous container: ${existing}"
             sh "docker stop ${existing} && docker rm ${existing}"
           }
 
-          // Run new container with the dynamic port
-          echo "Starting new container ${containerName}..."
+          // Run container
+          echo "🚀 Starting new container ${containerName}..."
           sh """
             docker run -d \
               --name ${containerName} \
@@ -80,7 +86,7 @@ pipeline {
 
           echo "✅ Container started at ${url}"
 
-          // If this is a PR, comment back to GitHub
+          // Comment on PR if applicable
           if (env.CHANGE_ID) {
             withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
               def repoOwner = 'AryanDadhwal015'
@@ -102,6 +108,8 @@ pipeline {
                   https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
               """
             }
+          } else {
+            echo "🌐 Deployed merge/main build at ${url}"
           }
         }
       }
