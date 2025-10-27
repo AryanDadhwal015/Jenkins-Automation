@@ -15,7 +15,7 @@ pipeline {
   stages {
     stage('Clone from GitHub') {
       steps {
-        echo "📦 Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
+        echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
         checkout([$class: 'GitSCM',
           branches: [[name: "${BRANCH_NAME}"]],
           userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
@@ -31,7 +31,7 @@ pipeline {
           env.SANITIZED_BRANCH = sanitizedBranch
           env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
 
-          echo "🐳 Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
           sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
         }
       }
@@ -42,29 +42,30 @@ pipeline {
         script {
           def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
 
-          // 🔢 Deterministic port selection
+          // Choose different base port ranges for PRs vs merges
           def basePort = env.CHANGE_ID ? 10000 : 11000
           def uniqueKey = env.CHANGE_ID ?: env.BRANCH_NAME
+
+          // Create a deterministic hash from the PR ID or branch name
           def hash = MessageDigest.getInstance("MD5")
-                                .digest(uniqueKey.bytes)
-                                .collect { String.format("%02x", it) }
-                                .join()
-          // Convert hash → integer offset 1–900
+                                  .digest(uniqueKey.bytes)
+                                  .collect { String.format("%02x", it) }
+                                  .join()
           def offset = (Math.abs(hash.hashCode()) % 900) + 1
           def HOST_PORT = basePort + offset
 
           def url = "http://${INSTANCE_IP}:${HOST_PORT}"
-          echo "🧩 Using deterministic port: ${HOST_PORT} for ${env.CHANGE_ID ? 'PR #' + env.CHANGE_ID : env.BRANCH_NAME}"
+          echo "Using port ${HOST_PORT} for ${env.CHANGE_ID ? 'PR #' + env.CHANGE_ID : env.BRANCH_NAME}"
 
           // Stop & remove old container if it exists
           def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
           if (existing) {
-            echo "🛑 Stopping previous container: ${existing}"
+            echo "Stopping and removing old container: ${existing}"
             sh "docker stop ${existing} && docker rm ${existing}"
           }
 
           // Run the new container
-          echo "🚀 Starting new container ${containerName}..."
+          echo "Starting container ${containerName}..."
           sh """
             docker run -d \
               --name ${containerName} \
@@ -72,18 +73,18 @@ pipeline {
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
 
-          echo "✅ Container started at ${url}"
+          echo "Container started at ${url}"
 
-          // Comment on PR if it's a preview
+          // Post GitHub PR comment if this is a pull request
           if (env.CHANGE_ID) {
             withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
               def repoOwner = 'AryanDadhwal015'
               def repoName = 'Jenkins-Automation'
               def commentBody = """
-              🚀 **Preview Environment Ready!**
-              - **URL:** ${url}
-              - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
-              - **Branch:** ${env.SANITIZED_BRANCH}
+              Preview environment ready!
+              - URL: ${url}
+              - Image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+              - Branch: ${env.SANITIZED_BRANCH}
               """
 
               def jsonPayload = JsonOutput.toJson([body: commentBody])
@@ -97,7 +98,7 @@ pipeline {
               """
             }
           } else {
-            echo "🌐 Merge build deployed at ${url}"
+            echo "Merge build deployed at ${url}"
           }
         }
       }
@@ -106,8 +107,11 @@ pipeline {
 
   post {
     success {
-      echo "✅ Deployment successful!"
+      echo "Deployment successful."
       sh "docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'"
     }
     failure {
-      echo "❌ Deployment failed. Check lo
+      echo "Deployment failed. Check logs above."
+    }
+  }
+}
