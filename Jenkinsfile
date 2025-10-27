@@ -10,7 +10,7 @@ pipeline {
     CONTAINER_BASE_NAME = 'my-app'
     HOST_PORT           = '80'
     CONTAINER_PORT      = '80'
-    INSTANCE_IP         = '172.31.76.29:8080' // <-- Change it to your IP address 172.31.76.29:8080
+    INSTANCE_IP         = '172.31.76.29' // <-- Change it to your IP address 172.31.76.29:8080
   }
 
   stages {
@@ -63,7 +63,7 @@ pipeline {
               -p ${HOST_PORT}:${CONTAINER_PORT} \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
-          echo "✅ Container started at ${url}"
+          echo "✅ Container started at http:"//${INSTANCE_IP}:${HOST_PORT}"
 
           // Post PR comment if this is a pull request
           if (env.CHANGE_ID) {
