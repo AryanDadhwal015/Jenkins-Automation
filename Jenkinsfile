@@ -10,15 +10,15 @@ pipeline {
         INSTANCE_IP = '15.206.80.224'
         GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
         CONTAINER_PORT = '80'
-        HOST_PORT = '80'
+        HOST_PORT = '8085' // 🔹 Fixed port for all PR deployments
     }
 
     stages {
         stage('Check PR') {
             steps {
                 script {
-                    if (!env.CHANGE_ID) {
-                        echo "This is not a PR. Skipping build."
+                    if (!env.CHANGE_ID && env.BRANCH_NAME != 'main') {
+                        echo "This is not a PR or main branch. Skipping build."
                         currentBuild.result = 'SUCCESS'
                         return
                     }
@@ -27,9 +27,8 @@ pipeline {
         }
 
         stage('Clone from GitHub') {
-            when { expression { env.CHANGE_ID != null } }
             steps {
-                echo "Cloning ${GIT_REPO_URL} (PR branch: ${BRANCH_NAME}) ..."
+                echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
                 checkout([$class: 'GitSCM',
                     branches: [[name: "${BRANCH_NAME}"]],
                     userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
@@ -38,10 +37,12 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            when { expression { env.CHANGE_ID != null } }
             steps {
                 script {
-                    def sanitizedBranch = (env.CHANGE_BRANCH ?: 'pr').replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
+                    def sanitizedBranch = (env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: 'branch')
+                        .replaceAll('[^a-zA-Z0-9_.-]', '-')
+                        .toLowerCase()
+
                     env.SANITIZED_BRANCH = sanitizedBranch
                     env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
 
@@ -51,13 +52,15 @@ pipeline {
             }
         }
 
-        stage('Deploy Container') {
+        // --- PR Deployment ---
+        stage('Deploy PR Container') {
             when { expression { env.CHANGE_ID != null } }
             steps {
                 script {
                     def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
                     def url = "http://${INSTANCE_IP}:${HOST_PORT}"
 
+                    // Stop and remove old container if it exists
                     def previousContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
                     if (previousContainer) {
                         echo "Stopping previous container: ${previousContainer}"
@@ -65,7 +68,7 @@ pipeline {
                         sh "docker rm ${previousContainer}"
                     }
 
-                    echo "Starting new container ${containerName} on port ${HOST_PORT}"
+                    echo "Starting PR container ${containerName} on fixed port ${HOST_PORT}"
                     sh """
                         docker run -d \
                         --name ${containerName} \
@@ -73,7 +76,7 @@ pipeline {
                         ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                     """
 
-                    echo "✅ Container started at ${url}"
+                    echo "✅ PR Container started at ${url}"
 
                     // Post preview URL back to PR
                     withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
@@ -94,6 +97,31 @@ pipeline {
                             https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
                         """
                     }
+                }
+            }
+        }
+
+        // --- Main branch deployment ---
+        stage('Deploy Main Branch') {
+            when { branch 'main' }
+            steps {
+                script {
+                    def containerName = "${CONTAINER_BASE_NAME}-main"
+                    def url = "http://${INSTANCE_IP}:80"
+
+                    echo "Stopping any existing main container..."
+                    sh "docker stop ${containerName} || true"
+                    sh "docker rm ${containerName} || true"
+
+                    echo "Starting main branch container on port 80"
+                    sh """
+                        docker run -d \
+                        --name ${containerName} \
+                        -p 80:80 \
+                        ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+                    """
+
+                    echo "✅ Main branch deployed at ${url}"
                 }
             }
         }
