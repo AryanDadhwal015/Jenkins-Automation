@@ -73,7 +73,111 @@ pipeline {
                 sh """
             docker run -d \
               --name ${containerName} \
-              -p ${HOST_PORT}:${CONTAINER_PORT} \
+              -p ${HOST_PORT}:${CONTAINER_PORT} \pipeline {
+    agent any
+    environment {
+        // Ensure a sensible default so preview/dev SCP deploys run when DEPLOY_METHOD isn't set in Jenkins
+        DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
+        BUILD_DIR = 'dist'
+        // Image tag uses branch name and build number when available
+        IMAGE_TAG = "${env.BRANCH_NAME ?: 'local'}-${env.BUILD_NUMBER ?: '0'}"
+        IMAGE_BASE_NAME     = 'my-app'
+        CONTAINER_BASE_NAME = 'my-app'
+        SERVER_IP =  '172.31.76.29'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Sanitize branch name for Docker tag and container usage
+                    def branch = env.BRANCH_NAME ?: env.CHANGE_BRANCH ?: 'local'
+                    def sanitizedBranch = branch.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
+                    env.SANITIZED_BRANCH = sanitizedBranch
+                    env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
+
+                    echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+                    sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                script {
+                    // Use sanitized branch in container name
+                    def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
+                    def url = "http://${SERVER_IP}:${HOST_PORT}"
+
+                    // Stop previous container if exists
+                    def previousContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
+                    if (previousContainer) {
+                        echo "Stopping previous container: ${previousContainer}"
+                        sh "docker stop ${previousContainer}"
+                        sh "docker rm ${previousContainer}"
+                    }
+
+                    // Run new container
+                    echo "Starting new container ${containerName}"
+                    sh """
+                        docker run -d \
+                          --name ${containerName} \
+                          -p ${HOST_PORT}:${CONTAINER_PORT} \
+                          ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+                    """
+                    echo "✅ Container started at ${url}"
+
+                    // Post PR comment if this is a pull request
+                    if (env.CHANGE_ID) {
+                        withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {       // <-- Set the Credential ID here as specified inside Jenkins Credentials
+                            def repoOwner = 'AryanDadhwal015'                                                        // <-- Change it to your GitHub username
+                            def repoName = 'Jenkins-Automation'                                                        // <-- Change it to your repository name
+                            def commentBody = """
+                              🚀 **Preview Environment Ready!**
+                              - **URL:** ${url}
+                              - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+                              - **Branch:** ${env.SANITIZED_BRANCH}
+                            """
+
+                            def jsonPayload = JsonOutput.toJson([body: commentBody])
+
+                            sh """
+                                curl -s -X POST \
+                                  -H "Authorization: token \${TOKEN}" \
+                                  -H "Content-Type: application/json" \
+                                  -d '${jsonPayload}' \
+                                  https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Archive Build Artifacts') {
+            steps {
+                archiveArtifacts artifacts: "${BUILD_DIR}/**", fingerprint: true
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo "✅ Build successful for branch: ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "❌ Build failed for branch: ${env.BRANCH_NAME}"
+        }
+    }
+}
+
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
                 echo "✅ Container started at ${url}"
