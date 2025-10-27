@@ -6,7 +6,7 @@ pipeline {
   environment {
     IMAGE_BASE_NAME = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    INSTANCE_IP = '13.126.74.186'
+    INSTANCE_IP = '13.126.74.186'   // public IP of your EC2 instance
     GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
     CONTAINER_PORT = '80'
   }
@@ -14,7 +14,7 @@ pipeline {
   stages {
     stage('Clone from GitHub') {
       steps {
-        echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
+        echo "📦 Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
         checkout([$class: 'GitSCM',
           branches: [[name: "${BRANCH_NAME}"]],
           userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
@@ -30,7 +30,7 @@ pipeline {
           env.SANITIZED_BRANCH = sanitizedBranch
           env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
 
-          echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          echo "🐳 Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
           sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
         }
       }
@@ -41,14 +41,14 @@ pipeline {
         script {
           def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
 
-          // 🧠 Decide port range based on build type
+          // 🧠 Separate port ranges for PRs and merge builds
           def portRangeStart = env.CHANGE_ID ? 10000 : 11001
           def portRangeEnd   = env.CHANGE_ID ? 11000 : 12000
 
           echo "🔧 Build type: ${env.CHANGE_ID ? 'Pull Request' : 'Merge/Commit'}"
           echo "🔍 Searching available port in range ${portRangeStart}-${portRangeEnd}..."
 
-          // Find available host port in selected range
+          // Find available host port dynamically
           def HOST_PORT = sh(
             script: """
               for port in \$(seq ${portRangeStart} ${portRangeEnd}); do
@@ -68,14 +68,14 @@ pipeline {
           def url = "http://${INSTANCE_IP}:${HOST_PORT}"
           echo "🧩 Using host port: ${HOST_PORT}"
 
-          // Stop and remove existing container with same branch
+          // Stop & remove old container if it exists
           def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
           if (existing) {
-            echo "Stopping previous container: ${existing}"
+            echo "🛑 Stopping previous container: ${existing}"
             sh "docker stop ${existing} && docker rm ${existing}"
           }
 
-          // Run container
+          // Run the new container
           echo "🚀 Starting new container ${containerName}..."
           sh """
             docker run -d \
@@ -86,7 +86,7 @@ pipeline {
 
           echo "✅ Container started at ${url}"
 
-          // Comment on PR if applicable
+          // Comment on PR with the preview URL
           if (env.CHANGE_ID) {
             withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
               def repoOwner = 'AryanDadhwal015'
@@ -109,7 +109,7 @@ pipeline {
               """
             }
           } else {
-            echo "🌐 Deployed merge/main build at ${url}"
+            echo "🌐 Merge build deployed at ${url}"
           }
         }
       }
