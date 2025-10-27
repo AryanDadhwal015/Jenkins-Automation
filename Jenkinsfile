@@ -63,7 +63,7 @@ pipeline {
               -p ${HOST_PORT}:${CONTAINER_PORT} \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
-          echo "✅ Container started at http:"//${INSTANCE_IP}:${HOST_PORT}"
+          echo "✅ Container started at ${url}"
 
           // Post PR comment if this is a pull request
           if (env.CHANGE_ID) {
