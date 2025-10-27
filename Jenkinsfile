@@ -1,135 +1,97 @@
 import groovy.json.JsonOutput
 
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        SERVER_IP = '13.233.134.67'
-        IMAGE_BASE_NAME = 'my-app'
-        CONTAINER_BASE_NAME = 'my-app'
-        PR_ID = "${env.CHANGE_ID ?: 'none'}"
-        DEPLOY_PORT = "${env.BUILD_NUMBER ? 10000 + env.BUILD_NUMBER.toInteger() : 30000}"
-        DEPLOY_URL = ''
-        IMAGE_TAG_FILE = 'image_tag.txt' // <--- New: temp file to store tag persistently
+  environment {
+    GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
+    IMAGE_BASE_NAME     = 'my-app'
+    CONTAINER_BASE_NAME = 'my-app'
+    HOST_PORT           = '80'
+    CONTAINER_PORT      = '80'
+    INSTANCE_IP         = '35.154.161.144' // <-- your EC2 public IP
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
+    stage('Build Docker Image') {
+      steps {
+        script {
+          def branchName = env.BRANCH_NAME ?: env.CHANGE_BRANCH ?: 'local'
+          def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
+          env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
+
+          echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
         }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    def branchName = env.BRANCH_NAME ?: 'local'
-                    def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-')
-                                                    .replaceAll('/', '-')
-                                                    .toLowerCase()
-                    def imageTag = "${sanitizedBranch}-${env.BUILD_NUMBER ?: '0'}"
-
-                    echo "Building Docker image: ${env.IMAGE_BASE_NAME}:${imageTag}"
-                    sh "docker build -t ${env.IMAGE_BASE_NAME}:${imageTag} ."
-
-                    // Write tag to file for persistence between stages
-                    writeFile file: env.IMAGE_TAG_FILE, text: imageTag
-                }
-            }
-        }
-
-        stage('Deploy Preview Container') {
-            when {
-                expression { return env.PR_ID != 'none' }
-            }
-            steps {
-                script {
-                    // Read the persisted tag
-                    def imageTag = readFile(env.IMAGE_TAG_FILE).trim()
-                    def containerName = "${env.CONTAINER_BASE_NAME}-pr-${env.PR_ID}"
-                    env.DEPLOY_URL = "http://${env.SERVER_IP}:${env.DEPLOY_PORT}"
-
-                    echo "Starting new PR container '${containerName}' using image ${env.IMAGE_BASE_NAME}:${imageTag}"
-
-                    def previousContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
-                    if (previousContainer) {
-                        sh "docker stop ${previousContainer}"
-                        sh "docker rm ${previousContainer}"
-                    }
-
-                    sh """
-                        docker run -d \\
-                            --name ${containerName} \\
-                            -p ${env.DEPLOY_PORT}:80 \\
-                            ${env.IMAGE_BASE_NAME}:${imageTag}
-                    """
-
-                    echo "✅ Preview deployed at ${env.DEPLOY_URL}"
-                }
-            }
-        }
-
-        stage('Notify Pull Request') {
-            when {
-                allOf {
-                    expression { return env.PR_ID != 'none' }
-                    expression { return currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-                }
-            }
-            steps {
-                script {
-                    def imageTag = readFile(env.IMAGE_TAG_FILE).trim()
-                    withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
-                        def repoOwner = 'AryanDadhwal015'
-                        def repoName = 'Jenkins-Automation'
-
-                        def commentBody = """
-                        🎉 **Preview Environment Ready!**
-
-                        **Access URL:** ${env.DEPLOY_URL}
-
-                        **Image Tag:** ${env.IMAGE_BASE_NAME}:${imageTag}
-                        """
-
-                        def jsonPayload = JsonOutput.toJson([body: commentBody])
-
-                        sh """
-                            curl -i -X POST \\
-                              -H "Authorization: token \${TOKEN}" \\
-                              -H "Content-Type: application/json" \\
-                              -d '${jsonPayload}' \\
-                              "https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.PR_ID}/comments"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Clean Up Non-PR Deployment') {
-            when {
-                expression { return env.PR_ID == 'none' }
-            }
-            steps {
-                script {
-                    // Read the persisted tag
-                    def imageTag = readFile(env.IMAGE_TAG_FILE).trim()
-
-                    def previousContainer = sh(script: "docker ps -aq -f name=${env.CONTAINER_BASE_NAME}", returnStdout: true).trim()
-                    if (previousContainer) {
-                        sh "docker stop ${previousContainer}"
-                        sh "docker rm ${previousContainer}"
-                    }
-
-                    echo "Starting production container using image: ${env.IMAGE_BASE_NAME}:${imageTag}"
-                    sh """
-                        docker run -d \\
-                            --name ${env.CONTAINER_BASE_NAME} \\
-                            -p 80:80 \\
-                            ${env.IMAGE_BASE_NAME}:${imageTag}
-                    """
-                    echo "✅ App deployed on http://${env.SERVER_IP}:80"
-                }
-            }
-        }
+      }
     }
+
+    stage('Deploy Container') {
+      steps {
+        script {
+          def isPR = env.CHANGE_ID != null
+          def containerName = isPR ? "${CONTAINER_BASE_NAME}-pr-${env.CHANGE_ID}" : CONTAINER_BASE_NAME
+          def port = isPR ? (10000 + env.BUILD_NUMBER.toInteger()) : 80
+          def url = "http://${INSTANCE_IP}:${port}"
+
+          // Stop existing container (if any)
+          def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
+          if (existing) {
+            sh "docker stop ${existing}"
+            sh "docker rm ${existing}"
+          }
+
+          // Run new container
+          echo "Starting container ${containerName} on port ${port}"
+          sh """
+            docker run -d \
+              --name ${containerName} \
+              -p ${port}:${CONTAINER_PORT} \
+              ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+          """
+
+          echo "✅ App deployed on ${url}"
+
+          // If it's a PR, notify GitHub
+          if (isPR) {
+            withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
+              def repoOwner = 'AryanDadhwal015'
+              def repoName = 'Jenkins-Automation'
+              def commentBody = """
+              🚀 **Preview Environment Ready!**
+              - **URL:** ${url}
+              - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+              """
+
+              def jsonPayload = JsonOutput.toJson([body: commentBody])
+
+              sh """
+                curl -s -X POST \
+                  -H "Authorization: token \${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '${jsonPayload}' \
+                  https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
+              """
+            }
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Build completed successfully."
+    }
+    failure {
+      echo "❌ Build failed."
+    }
+  }
 }
