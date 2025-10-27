@@ -4,17 +4,14 @@ pipeline {
   agent any
 
   environment {
-    // Ensure a sensible default so preview/dev SCP deploys run when DEPLOY_METHOD isn't set in Jenkins
     DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
     BUILD_DIR = 'dist'
-    // Image tag uses branch name and build number when available
-    IMAGE_TAG = "${env.BRANCH_NAME ?: 'local'}-${env.BUILD_NUMBER ?: '0'}"
     IMAGE_BASE_NAME = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    INSTANCE_IP = '172.31.76.29'  // <-- Ensure this IP is correct
-    GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'  // <-- Explicitly set the Git repository URL here
-    HOST_PORT = '80'  // <-- Define the port if it's not defined elsewhere
-    CONTAINER_PORT = '80'  // <-- Define the container port
+    INSTANCE_IP = '172.31.76.29'  // Ensure this IP is correct
+    GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'  // Set Git repository URL
+    HOST_PORT = '8080'  // Define the port if it's not defined elsewhere
+    CONTAINER_PORT = '8080'  // Define the container port
   }
 
   stages {
@@ -22,7 +19,7 @@ pipeline {
       steps {
         echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
         checkout([$class: 'GitSCM',
-          branches: [[name: "${BRANCH_NAME}"]],
+          branches: [[name: "${BRANCH_NAME}"]], 
           userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
         ])
       }
@@ -70,9 +67,9 @@ pipeline {
 
           // Post PR comment if this is a pull request
           if (env.CHANGE_ID) {
-            withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {       // <-- Set the Credential ID here as specified inside Jenkins Credentials
-              def repoOwner = 'AryanDadhwal015'                                                        // <-- Change it to your GitHub username
-              def repoName = 'Jenkins-Automation'                                                        // <-- Change it to your repository name  
+            withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
+              def repoOwner = 'AryanDadhwal015'
+              def repoName = 'Jenkins-Automation'
               def commentBody = """
               🚀 **Preview Environment Ready!**
               - **URL:** ${url}
