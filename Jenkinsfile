@@ -9,23 +9,27 @@ pipeline {
         CONTAINER_BASE_NAME = 'my-app'
         INSTANCE_IP = '15.206.80.224'
         GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
-        CONTAINER_PORT = '80'
-        PR_PREVIEW_PORT = 8085
+        PR_PORT = '8085'
+        MAIN_PORT = '80'
     }
 
     stages {
-        stage('Check Build Type') {
+        stage('Check PR') {
             steps {
                 script {
-                    echo "Branch name: ${env.BRANCH_NAME}"
-                    echo "PR ID: ${env.CHANGE_ID ?: 'N/A'}"
+                    if (!env.CHANGE_ID) {
+                        echo "This is not a PR. Skipping PR preview."
+                    } else {
+                        echo "PR detected: ${env.CHANGE_ID}"
+                    }
                 }
             }
         }
 
         stage('Clone from GitHub') {
+            when { expression { env.CHANGE_ID != null } }
             steps {
-                echo "Cloning ${GIT_REPO_URL} (branch: ${BRANCH_NAME}) ..."
+                echo "Cloning ${GIT_REPO_URL} (PR branch: ${BRANCH_NAME}) ..."
                 checkout([$class: 'GitSCM',
                     branches: [[name: "${BRANCH_NAME}"]],
                     userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
@@ -36,10 +40,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def sanitizedBranch = (env.CHANGE_BRANCH ?: env.BRANCH_NAME ?: 'branch')
-                        .replaceAll('[^a-zA-Z0-9_.-]', '-')
-                        .toLowerCase()
-
+                    def sanitizedBranch = (env.CHANGE_BRANCH ?: 'main').replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
                     env.SANITIZED_BRANCH = sanitizedBranch
                     env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
 
@@ -53,32 +54,34 @@ pipeline {
             when { expression { env.CHANGE_ID != null } }
             steps {
                 script {
-                    def containerName = "${CONTAINER_BASE_NAME}-pr"
-                    def url = "http://${INSTANCE_IP}:${PR_PREVIEW_PORT}"
+                    def containerName = "${CONTAINER_BASE_NAME}-pr-${env.SANITIZED_BRANCH}"
+                    def url = "http://${INSTANCE_IP}:${PR_PORT}"
 
-                    echo "Deploying PR #${env.CHANGE_ID} preview at ${url}"
-
-                    // Stop previous container if exists
-                    def prevContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
-                    if (prevContainer) {
-                        sh "docker stop ${prevContainer}"
-                        sh "docker rm ${prevContainer}"
+                    // Stop and remove previous PR container safely
+                    def prevContainers = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim().split("\\r?\\n")
+                    for (c in prevContainers) {
+                        if (c) {
+                            sh "docker stop ${c} || true"
+                            sh "docker rm ${c} || true"
+                        }
                     }
 
-                    // Run new PR container on fixed port
+                    echo "Starting PR preview container ${containerName} on port ${PR_PORT}"
                     sh """
                         docker run -d \
                         --name ${containerName} \
-                        -p ${PR_PREVIEW_PORT}:${CONTAINER_PORT} \
+                        -p ${PR_PORT}:80 \
                         ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                     """
 
-                    // Post preview URL back to PR
+                    echo "✅ PR preview started at ${url}"
+
+                    // Post preview URL back to GitHub PR
                     withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
                         def repoOwner = 'AryanDadhwal015'
                         def repoName = 'Jenkins-Automation'
                         def commentBody = """
-                        🚀 **Preview Environment Ready!**
+                        🚀 **PR Preview Environment Ready!**
                         - **URL:** ${url}
                         - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                         - **Branch:** ${env.SANITIZED_BRANCH}
@@ -101,17 +104,24 @@ pipeline {
             steps {
                 script {
                     def containerName = "${CONTAINER_BASE_NAME}-main"
-                    def url = "http://${INSTANCE_IP}:80"
+                    def url = "http://${INSTANCE_IP}:${MAIN_PORT}"
 
                     echo "Deploying main branch to production at ${url}"
 
-                    sh "docker stop ${containerName} || true"
-                    sh "docker rm ${containerName} || true"
+                    // Stop previous container safely
+                    def prevContainers = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim().split("\\r?\\n")
+                    for (c in prevContainers) {
+                        if (c) {
+                            sh "docker stop ${c} || true"
+                            sh "docker rm ${c} || true"
+                        }
+                    }
 
+                    // Run production container on port 80
                     sh """
                         docker run -d \
                         --name ${containerName} \
-                        -p 80:80 \
+                        -p ${MAIN_PORT}:80 \
                         ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                     """
 
