@@ -9,7 +9,7 @@ pipeline {
         CONTAINER_BASE_NAME = 'my-app'
         HOST_PORT           = '80'
         CONTAINER_PORT      = '80'
-        INSTANCE_IP         = '35.154.161.144' // <-- your EC2 public IP
+        INSTANCE_IP         = '172.31.76.29:8080' // <-- your EC2 public IP
     }
 
     stages {
