@@ -50,12 +50,14 @@ pipeline {
 
                     // Run new container
                     echo "Starting container ${containerName} on port ${HOST_PORT}"
+                                        // Run new container and capture its ID safely
                     def containerId = sh(
                         script: "docker run -d --name ${containerName} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE_BASE_NAME}:${env.IMAGE_TAG}",
                         returnStdout: true
                     ).trim()
 
                     echo "✅ App deployed at ${url} with container ID: ${containerId}"
+
 
                     // If it's a PR, notify GitHub
                     if (isPR) {
