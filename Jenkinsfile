@@ -19,7 +19,6 @@ pipeline {
                 script {
                     echo "Branch name: ${env.BRANCH_NAME}"
                     echo "PR ID: ${env.CHANGE_ID ?: 'N/A'}"
-                    echo "Target branch: ${env.CHANGE_TARGET ?: 'N/A'}"
                 }
             }
         }
@@ -52,7 +51,7 @@ pipeline {
 
         // --- PR Preview Deployment ---
         stage('Deploy PR Preview') {
-            when { expression { env.CHANGE_ID != null } }  // runs for any PR
+            when { expression { env.CHANGE_ID != null } }  // Only for PRs
             steps {
                 script {
                     def containerName = "${CONTAINER_BASE_NAME}-pr"
@@ -61,73 +60,3 @@ pipeline {
                     echo "Deploying PR #${env.CHANGE_ID} preview at ${url}"
 
                     // Stop previous container if exists
-                    def prevContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
-                    if (prevContainer) {
-                        sh "docker stop ${prevContainer}"
-                        sh "docker rm ${prevContainer}"
-                    }
-
-                    // Run new preview container on port 8085
-                    sh """
-                        docker run -d \
-                        --name ${containerName} \
-                        -p ${PR_PREVIEW_PORT}:${CONTAINER_PORT} \
-                        ${IMAGE_BASE_NAME}:${IMAGE_TAG}
-                    """
-
-                    // Post URL back to PR
-                    withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
-                        def repoOwner = 'AryanDadhwal015'
-                        def repoName = 'Jenkins-Automation'
-                        def commentBody = """
-                        🚀 **Preview Environment Ready!**
-                        - **URL:** ${url}
-                        - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
-                        - **Branch:** ${env.SANITIZED_BRANCH}
-                        """
-                        def jsonPayload = JsonOutput.toJson([body: commentBody])
-                        sh """
-                            curl -s -X POST \
-                            -H "Authorization: token \${TOKEN}" \
-                            -H "Content-Type: application/json" \
-                            -d '${jsonPayload}' \
-                            https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
-                        """
-                    }
-                }
-            }
-        }
-
-        // --- Main branch deployment ---
-        stage('Deploy Main Branch') {
-            when { branch 'main' }
-            steps {
-                script {
-                    def containerName = "${CONTAINER_BASE_NAME}-main"
-                    def url = "http://${INSTANCE_IP}:80"
-
-                    echo "Deploying main branch to production at ${url}"
-
-                    // Stop previous container if exists
-                    sh "docker stop ${containerName} || true"
-                    sh "docker rm ${containerName} || true"
-
-                    // Run production container on port 80
-                    sh """
-                        docker run -d \
-                        --name ${containerName} \
-                        -p 80:80 \
-                        ${IMAGE_BASE_NAME}:${IMAGE_TAG}
-                    """
-
-                    echo "✅ Main branch deployed at ${url}"
-                }
-            }
-        }
-    }
-
-    post {
-        success { echo "✅ Build and deployment successful!" }
-        failure { echo "❌ Deployment failed. Check logs above." }
-    }
-}
