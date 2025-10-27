@@ -10,8 +10,8 @@ pipeline {
     CONTAINER_BASE_NAME = 'my-app'
     INSTANCE_IP = '172.31.76.29'  // Ensure this IP is correct
     GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'  // Set Git repository URL
-    HOST_PORT = '8080'  // Define the port if it's not defined elsewhere
-    CONTAINER_PORT = '8080'  // Define the container port
+    HOST_PORT = '80'  // Define the port if it's not defined elsewhere
+    CONTAINER_PORT = '80'  // Define the container port
   }
 
   stages {
