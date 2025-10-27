@@ -4,13 +4,17 @@ pipeline {
   agent any
 
   environment {
-   DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
+    // Ensure a sensible default so preview/dev SCP deploys run when DEPLOY_METHOD isn't set in Jenkins
+    DEPLOY_METHOD = "${env.DEPLOY_METHOD ?: ''}"
     BUILD_DIR = 'dist'
     // Image tag uses branch name and build number when available
     IMAGE_TAG = "${env.BRANCH_NAME ?: 'local'}-${env.BUILD_NUMBER ?: '0'}"
-    IMAGE_BASE_NAME     = 'my-app'
+    IMAGE_BASE_NAME = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    INSTANCE_IP         = '172.31.76.29' // <-- Change it to your IP address 172.31.76.29:8080
+    INSTANCE_IP = '172.31.76.29'  // <-- Ensure this IP is correct
+    GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'  // <-- Explicitly set the Git repository URL here
+    HOST_PORT = '80'  // <-- Define the port if it's not defined elsewhere
+    CONTAINER_PORT = '80'  // <-- Define the container port
   }
 
   stages {
@@ -23,7 +27,6 @@ pipeline {
         ])
       }
     }
-
 
     stage('Build Docker Image') {
       steps {
