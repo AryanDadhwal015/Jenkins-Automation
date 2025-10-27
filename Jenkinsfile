@@ -10,7 +10,7 @@ pipeline {
         INSTANCE_IP = '15.206.80.224'
         GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
         CONTAINER_PORT = '80'
-        HOST_PORT = '8085' // 🔹 Fixed port for all PR deployments
+        BASE_PREVIEW_PORT = 8085 // starting port for PR previews
     }
 
     stages {
@@ -18,14 +18,8 @@ pipeline {
             steps {
                 script {
                     echo "Branch name: ${env.BRANCH_NAME}"
-                    echo "PR ID: ${env.CHANGE_ID}"
+                    echo "PR ID: ${env.CHANGE_ID ?: 'N/A'}"
                     echo "Target branch: ${env.CHANGE_TARGET ?: 'N/A'}"
-
-                    if (!env.CHANGE_ID && env.BRANCH_NAME != 'main') {
-                        echo "Not a PR or main branch — skipping build."
-                        currentBuild.result = 'SUCCESS'
-                        return
-                    }
                 }
             }
         }
@@ -56,39 +50,34 @@ pipeline {
             }
         }
 
-        // --- PR Merge Deployment ---
-        stage('Deploy PR Container') {
-            when {
-                // only run on Jenkins PR merge builds
-                expression { return env.CHANGE_ID && env.CHANGE_TARGET != null }
-            }
+        // --- PR Preview Deployment ---
+        stage('Deploy PR Preview') {
+            when { expression { return env.CHANGE_ID != null } }
             steps {
                 script {
-                    def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
-                    def url = "http://${INSTANCE_IP}:${HOST_PORT}"
+                    // Dynamic port to avoid conflicts between multiple PRs
+                    def previewPort = BASE_PREVIEW_PORT.toInteger() + (env.BUILD_NUMBER.toInteger() % 1000)
+                    def containerName = "${CONTAINER_BASE_NAME}-pr-${env.SANITIZED_BRANCH}"
+                    def url = "http://${INSTANCE_IP}:${previewPort}"
 
-                    echo "Detected PR merge build for PR #${env.CHANGE_ID}"
-                    echo "Deploying preview container: ${containerName} on port ${HOST_PORT}"
+                    echo "Deploying PR #${env.CHANGE_ID} preview at ${url}"
 
-                    // Stop any existing preview container
-                    def previousContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
-                    if (previousContainer) {
-                        echo "Stopping previous container: ${previousContainer}"
-                        sh "docker stop ${previousContainer}"
-                        sh "docker rm ${previousContainer}"
+                    // Stop previous container if exists
+                    def prevContainer = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
+                    if (prevContainer) {
+                        sh "docker stop ${prevContainer}"
+                        sh "docker rm ${prevContainer}"
                     }
 
-                    // Run new container
+                    // Run new preview container
                     sh """
                         docker run -d \
                         --name ${containerName} \
-                        -p ${HOST_PORT}:${CONTAINER_PORT} \
+                        -p ${previewPort}:${CONTAINER_PORT} \
                         ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                     """
 
-                    echo "✅ PR Preview deployed at ${url}"
-
-                    // Post comment back to PR
+                    // Post URL back to PR
                     withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
                         def repoOwner = 'AryanDadhwal015'
                         def repoName = 'Jenkins-Automation'
@@ -119,10 +108,13 @@ pipeline {
                     def containerName = "${CONTAINER_BASE_NAME}-main"
                     def url = "http://${INSTANCE_IP}:80"
 
-                    echo "Deploying main branch on port 80"
+                    echo "Deploying main branch to production at ${url}"
+
+                    // Stop previous container if exists
                     sh "docker stop ${containerName} || true"
                     sh "docker rm ${containerName} || true"
 
+                    // Run production container
                     sh """
                         docker run -d \
                         --name ${containerName} \
@@ -138,6 +130,6 @@ pipeline {
 
     post {
         success { echo "✅ Build and deployment successful!" }
-        failure { echo "❌ Deployment failed. Please check logs." }
+        failure { echo "❌ Deployment failed. Check logs above." }
     }
 }
