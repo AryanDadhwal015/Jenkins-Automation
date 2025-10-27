@@ -10,7 +10,7 @@ pipeline {
         INSTANCE_IP = '15.206.80.224'
         GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
         CONTAINER_PORT = '80'
-        PR_PREVIEW_PORT = 8085 // fixed port for PR preview
+        PR_PREVIEW_PORT = 8085
     }
 
     stages {
@@ -52,9 +52,7 @@ pipeline {
 
         // --- PR Preview Deployment ---
         stage('Deploy PR Preview') {
-            when { 
-                expression { env.CHANGE_ID != null && env.BRANCH_NAME == env.CHANGE_BRANCH } 
-            }
+            when { expression { env.CHANGE_ID != null } }  // runs for any PR
             steps {
                 script {
                     def containerName = "${CONTAINER_BASE_NAME}-pr"
@@ -69,7 +67,7 @@ pipeline {
                         sh "docker rm ${prevContainer}"
                     }
 
-                    // Run new preview container on fixed port 8085
+                    // Run new preview container on port 8085
                     sh """
                         docker run -d \
                         --name ${containerName} \
