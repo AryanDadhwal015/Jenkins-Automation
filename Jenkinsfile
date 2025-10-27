@@ -10,7 +10,7 @@ pipeline {
         INSTANCE_IP = '15.206.80.224'
         GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
         CONTAINER_PORT = '80'
-        BASE_PREVIEW_PORT = 8085 // starting port for PR previews
+        PR_PREVIEW_PORT = 8085 // fixed port for PR preview
     }
 
     stages {
@@ -52,13 +52,13 @@ pipeline {
 
         // --- PR Preview Deployment ---
         stage('Deploy PR Preview') {
-            when { expression { return env.CHANGE_ID != null } }
+            when { 
+                expression { env.CHANGE_ID != null && env.BRANCH_NAME == env.CHANGE_BRANCH } 
+            }
             steps {
                 script {
-                    // Dynamic port to avoid conflicts between multiple PRs
-                    def previewPort = BASE_PREVIEW_PORT.toInteger() + (env.BUILD_NUMBER.toInteger() % 1000)
-                    def containerName = "${CONTAINER_BASE_NAME}-pr-${env.SANITIZED_BRANCH}"
-                    def url = "http://${INSTANCE_IP}:${previewPort}"
+                    def containerName = "${CONTAINER_BASE_NAME}-pr"
+                    def url = "http://${INSTANCE_IP}:${PR_PREVIEW_PORT}"
 
                     echo "Deploying PR #${env.CHANGE_ID} preview at ${url}"
 
@@ -69,11 +69,11 @@ pipeline {
                         sh "docker rm ${prevContainer}"
                     }
 
-                    // Run new preview container
+                    // Run new preview container on fixed port 8085
                     sh """
                         docker run -d \
                         --name ${containerName} \
-                        -p ${previewPort}:${CONTAINER_PORT} \
+                        -p ${PR_PREVIEW_PORT}:${CONTAINER_PORT} \
                         ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                     """
 
@@ -114,7 +114,7 @@ pipeline {
                     sh "docker stop ${containerName} || true"
                     sh "docker rm ${containerName} || true"
 
-                    // Run production container
+                    // Run production container on port 80
                     sh """
                         docker run -d \
                         --name ${containerName} \
