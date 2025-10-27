@@ -23,12 +23,13 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
+                    // Determine branch or PR branch
                     def branchName = env.BRANCH_NAME ?: env.CHANGE_BRANCH ?: 'local'
                     def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
                     env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
 
-                    echo "Building Docker image: ${IMAGE_BASE_NAME}:${env.IMAGE_TAG}"
-                    sh "docker build -t ${IMAGE_BASE_NAME}:${env.IMAGE_TAG} ."
+                    echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+                    sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
                 }
             }
         }
@@ -40,7 +41,7 @@ pipeline {
                     def containerName = isPR ? "${CONTAINER_BASE_NAME}-pr-${env.CHANGE_ID}" : CONTAINER_BASE_NAME
                     def url = "http://${INSTANCE_IP}:${HOST_PORT}"
 
-                    // Stop existing container (if any)
+                    // Stop existing container if it exists
                     def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
                     if (existing) {
                         echo "Stopping previous container: ${existing}"
@@ -48,37 +49,36 @@ pipeline {
                         sh "docker rm ${existing}"
                     }
 
-                    // Run new container
-                    echo "Starting container ${containerName} on port ${HOST_PORT}"
-                                        // Run new container and capture its ID safely
-                    def containerId = sh(
-                        script: "docker run -d --name ${containerName} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE_BASE_NAME}:${env.IMAGE_TAG}",
-                        returnStdout: true
-                    ).trim()
+                    // Run the container with fixed 80:80 mapping
+                    echo "Starting container ${containerName} on ${HOST_PORT}:${CONTAINER_PORT}"
+                    sh """
+                        docker run -d \
+                        --name ${containerName} \
+                        -p ${HOST_PORT}:${CONTAINER_PORT} \
+                        ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+                    """
 
-                    echo "✅ App deployed at ${url} with container ID: ${containerId}"
+                    echo "✅ App deployed on ${url}"
 
-
-                    // If it's a PR, notify GitHub
+                    // Post PR comment if applicable
                     if (isPR) {
                         withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
                             def repoOwner = 'AryanDadhwal015'
                             def repoName = 'Jenkins-Automation'
-
                             def commentBody = """
                             🚀 **Preview Environment Ready!**
                             - **URL:** ${url}
-                            - **Image:** ${IMAGE_BASE_NAME}:${env.IMAGE_TAG}
+                            - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
                             """
 
                             def jsonPayload = JsonOutput.toJson([body: commentBody])
 
                             sh """
                                 curl -s -X POST \
-                                    -H "Authorization: token \${TOKEN}" \
-                                    -H "Content-Type: application/json" \
-                                    -d '${jsonPayload}' \
-                                    https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
+                                -H "Authorization: token \${TOKEN}" \
+                                -H "Content-Type: application/json" \
+                                -d '${jsonPayload}' \
+                                https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
                             """
                         }
                     }
@@ -89,11 +89,11 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build completed successfully."
+            echo "✅ Build and deployment completed successfully."
             sh "docker ps"
         }
         failure {
-            echo "❌ Build failed."
+            echo "❌ Build or deployment failed."
         }
     }
 }
