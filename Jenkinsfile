@@ -1,9 +1,7 @@
+import groovy.json.JsonOutput
+
 pipeline {
   agent any
-
-  parameters {
-    string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git branch to build')
-  }
 
   environment {
     GIT_REPO_URL        = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
@@ -11,24 +9,24 @@ pipeline {
     CONTAINER_BASE_NAME = 'my-app'
     HOST_PORT           = '80'
     CONTAINER_PORT      = '80'
-    INSTANCE_IP         = '35.154.161.144' // <-- Change it to your IP address 
+    INSTANCE_IP         = '172.31.76.29' // <-- your EC2 public IP
   }
 
   stages {
-    stage('Clone from GitHub') {
+
+    stage('Checkout') {
       steps {
-        echo "Cloning ${GIT_REPO_URL} (branch: ${params.BRANCH_NAME}) ..."
-        checkout([$class: 'GitSCM',
-          branches: [[name: "${params.BRANCH_NAME}"]],
-          userRemoteConfigs: [[url: "${GIT_REPO_URL}"]]
-        ])
+        checkout scm
       }
     }
 
     stage('Build Docker Image') {
       steps {
         script {
-          env.IMAGE_TAG = "${params.BRANCH_NAME}-${env.BUILD_NUMBER}"
+          def branchName = env.BRANCH_NAME ?: env.CHANGE_BRANCH ?: 'local'
+          def sanitizedBranch = branchName.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
+          env.IMAGE_TAG = "${sanitizedBranch}-${env.BUILD_NUMBER}"
+
           echo "Building Docker image: ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
           sh "docker build -t ${IMAGE_BASE_NAME}:${IMAGE_TAG} ."
         }
@@ -38,25 +36,50 @@ pipeline {
     stage('Deploy Container') {
       steps {
         script {
-          def previousContainer = sh(
-            script: "docker ps -aq -f name=${CONTAINER_BASE_NAME}",
-            returnStdout: true
-          ).trim()
+          def isPR = env.CHANGE_ID != null
+          def containerName = isPR ? "${CONTAINER_BASE_NAME}-pr-${env.CHANGE_ID}" : CONTAINER_BASE_NAME
+          def url = "http://${INSTANCE_IP}:80"
 
-          if (previousContainer) {
-            echo "Stopping previous container: ${previousContainer}"
-            sh "docker stop ${previousContainer}"
-            sh "docker rm ${previousContainer}"
+          // Stop existing container (if any)
+          def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
+          if (existing) {
+            sh "docker stop ${existing}"
+            sh "docker rm ${existing}"
           }
 
-          echo "Starting new container with image ${IMAGE_BASE_NAME}:${IMAGE_TAG}"
+          // Run new container
+          echo "Starting container ${containerName} on port 80"
           sh """
             docker run -d \
-              --name ${CONTAINER_BASE_NAME} \
+              --name ${containerName} \
               -p ${HOST_PORT}:${CONTAINER_PORT} \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
-          echo "✅ Container started successfully and mapped to http://${INSTANCE_IP}:${HOST_PORT}"
+
+          echo "✅ App deployed on ${url}"
+
+          // If it's a PR, notify GitHub
+          if (isPR) {
+            withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
+              def repoOwner = 'AryanDadhwal015'
+              def repoName = 'Jenkins-Automation'
+              def commentBody = """
+              🚀 **Preview Environment Ready!**
+              - **URL:** ${url}
+              - **Image:** ${IMAGE_BASE_NAME}:${IMAGE_TAG}
+              """
+
+              def jsonPayload = JsonOutput.toJson([body: commentBody])
+
+              sh """
+                curl -s -X POST \
+                  -H "Authorization: token \${TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d '${jsonPayload}' \
+                  https://api.github.com/repos/${repoOwner}/${repoName}/issues/${env.CHANGE_ID}/comments
+              """
+            }
+          }
         }
       }
     }
@@ -64,11 +87,10 @@ pipeline {
 
   post {
     success {
-      echo "✅ Deployment successful!"
-      sh "docker ps"
+      echo "✅ Build completed successfully."
     }
     failure {
-      echo "❌ Deployment failed. Check logs above."
+      echo "❌ Build failed."
     }
   }
 }
