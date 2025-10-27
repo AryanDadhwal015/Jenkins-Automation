@@ -1,7 +1,6 @@
-
+# Multi-stage build for Vite React TypeScript apps
 # Stage 1: Build the application
-# updated aryan file
-FROM node:24-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -10,7 +9,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN npm ci --only=dev
+RUN npm i
 
 # Copy source code
 COPY . .
@@ -27,8 +26,10 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration (optional - nginx default config works for most cases)
 # COPY nginx.conf /etc/nginx/nginx.conf
 
-# Expose port 80
-EXPOSE 80
+
+
+# Expose port 3000
+EXPOSE 3000
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
