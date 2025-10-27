@@ -38,8 +38,7 @@ pipeline {
         script {
           def isPR = env.CHANGE_ID != null
           def containerName = isPR ? "${CONTAINER_BASE_NAME}-pr-${env.CHANGE_ID}" : CONTAINER_BASE_NAME
-          def port = isPR ? (10000 + env.BUILD_NUMBER.toInteger()) : 80
-          def url = "http://${INSTANCE_IP}:${port}"
+          def url = "http://${INSTANCE_IP}:80"
 
           // Stop existing container (if any)
           def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
@@ -49,11 +48,11 @@ pipeline {
           }
 
           // Run new container
-          echo "Starting container ${containerName} on port ${port}"
+          echo "Starting container ${containerName} on port 80"
           sh """
             docker run -d \
               --name ${containerName} \
-              -p ${port}:${CONTAINER_PORT} \
+              -p ${HOST_PORT}:${CONTAINER_PORT} \
               ${IMAGE_BASE_NAME}:${IMAGE_TAG}
           """
 
