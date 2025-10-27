@@ -1,5 +1,4 @@
-// this is my newPr 
-import groovy.json.JsonOutput
+ import groovy.json.JsonOutput
 
 pipeline {
   agent any
