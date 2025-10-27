@@ -1,4 +1,5 @@
 import groovy.json.JsonOutput
+import java.security.MessageDigest
 
 pipeline {
   agent any
@@ -6,7 +7,7 @@ pipeline {
   environment {
     IMAGE_BASE_NAME = 'my-app'
     CONTAINER_BASE_NAME = 'my-app'
-    INSTANCE_IP = '13.126.74.186'   // public IP of your EC2 instance
+    INSTANCE_IP = '13.126.74.186'
     GIT_REPO_URL = 'https://github.com/AryanDadhwal015/Jenkins-Automation.git'
     CONTAINER_PORT = '80'
   }
@@ -41,32 +42,19 @@ pipeline {
         script {
           def containerName = "${CONTAINER_BASE_NAME}-${env.SANITIZED_BRANCH}"
 
-          // 🧠 Separate port ranges for PRs and merge builds
-          def portRangeStart = env.CHANGE_ID ? 10000 : 11001
-          def portRangeEnd   = env.CHANGE_ID ? 11000 : 12000
-
-          echo "🔧 Build type: ${env.CHANGE_ID ? 'Pull Request' : 'Merge/Commit'}"
-          echo "🔍 Searching available port in range ${portRangeStart}-${portRangeEnd}..."
-
-          // Find available host port dynamically
-          def HOST_PORT = sh(
-            script: """
-              for port in \$(seq ${portRangeStart} ${portRangeEnd}); do
-                if ! sudo netstat -tuln | awk '{print \$4}' | grep -q ":\\\$port\$"; then
-                  echo \\\$port
-                  break
-                fi
-              done
-            """,
-            returnStdout: true
-          ).trim()
-
-          if (!HOST_PORT) {
-            error("❌ No available port found in range ${portRangeStart}-${portRangeEnd}!")
-          }
+          // 🔢 Deterministic port selection
+          def basePort = env.CHANGE_ID ? 10000 : 11000
+          def uniqueKey = env.CHANGE_ID ?: env.BRANCH_NAME
+          def hash = MessageDigest.getInstance("MD5")
+                                .digest(uniqueKey.bytes)
+                                .collect { String.format("%02x", it) }
+                                .join()
+          // Convert hash → integer offset 1–900
+          def offset = (Math.abs(hash.hashCode()) % 900) + 1
+          def HOST_PORT = basePort + offset
 
           def url = "http://${INSTANCE_IP}:${HOST_PORT}"
-          echo "🧩 Using host port: ${HOST_PORT}"
+          echo "🧩 Using deterministic port: ${HOST_PORT} for ${env.CHANGE_ID ? 'PR #' + env.CHANGE_ID : env.BRANCH_NAME}"
 
           // Stop & remove old container if it exists
           def existing = sh(script: "docker ps -aq -f name=${containerName}", returnStdout: true).trim()
@@ -86,7 +74,7 @@ pipeline {
 
           echo "✅ Container started at ${url}"
 
-          // Comment on PR with the preview URL
+          // Comment on PR if it's a preview
           if (env.CHANGE_ID) {
             withCredentials([string(credentialsId: 'GITHUB_PR_TOKEN', variable: 'TOKEN')]) {
               def repoOwner = 'AryanDadhwal015'
@@ -122,7 +110,4 @@ pipeline {
       sh "docker ps --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'"
     }
     failure {
-      echo "❌ Deployment failed. Check logs above."
-    }
-  }
-}
+      echo "❌ Deployment failed. Check lo
