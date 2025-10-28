@@ -72,7 +72,7 @@ pipeline {
       steps {
         script {
           withCredentials([usernamePassword(
-            credentialsId: 'github_token',
+            credentialsId: 'github_login',
             usernameVariable: 'GIT_USER',
             passwordVariable: 'GIT_TOKEN'
           )]) {
