@@ -9,10 +9,6 @@ pipeline {
     CONTAINER_PORT     = '80'
   }
 
-  triggers {
-    // No SCM trigger — build will run only from webhook (PR event)
-  }
-
   stages {
 
     stage('Clone from GitHub') {
