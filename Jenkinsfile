@@ -5,8 +5,8 @@ pipeline {
     GITHUB_USER        = 'AryanDadhwal015'
     GITHUB_REPO_NAME   = 'Jenkins-Automation'
     INSTANCE_IP        = '3.110.216.133'
-    HOST_PORT          = '80'
     CONTAINER_PORT     = '80'
+    HOST_PORT          = '8002'   // 👈 PR previews will run here
   }
 
   stages {
@@ -25,8 +25,6 @@ pipeline {
         script {
           def branch = env.CHANGE_BRANCH ?: env.BRANCH_NAME
           def sanitizedBranch = branch.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
-
-          // ✅ Force repo name lowercase for Docker
           def repoNameLower = env.GITHUB_REPO_NAME.toLowerCase()
 
           env.SANITIZED_BRANCH = sanitizedBranch
@@ -34,9 +32,7 @@ pipeline {
 
           echo "🐳 Building Docker image: ${env.IMAGE_NAME}"
 
-          sh """
-            docker build -t ${env.IMAGE_NAME} .
-          """
+          sh "docker build -t ${env.IMAGE_NAME} ."
         }
       }
     }
@@ -47,6 +43,7 @@ pipeline {
         script {
           def repoNameLower = env.GITHUB_REPO_NAME.toLowerCase()
           def containerName = "${repoNameLower}-${env.SANITIZED_BRANCH}"
+
           echo "🚀 Deploying container: ${containerName}"
 
           // Stop old container if exists
@@ -59,7 +56,7 @@ pipeline {
             fi
           """
 
-          // Run new container
+          // Run new container on port 8002
           sh """
             docker run -d --name ${containerName} -p ${HOST_PORT}:${CONTAINER_PORT} ${env.IMAGE_NAME}
           """
