@@ -23,12 +23,15 @@ pipeline {
       when { expression { env.CHANGE_ID != null } }
       steps {
         script {
-          // sanitize branch for Docker naming
           def branch = env.CHANGE_BRANCH ?: env.BRANCH_NAME
           def sanitizedBranch = branch.replaceAll('[^a-zA-Z0-9_.-]', '-').toLowerCase()
-          env.SANITIZED_BRANCH = sanitizedBranch
 
-          env.IMAGE_NAME = "${GITHUB_REPO_NAME}:${sanitizedBranch}-${env.BUILD_NUMBER}"
+          // ✅ Force repo name lowercase for Docker
+          def repoNameLower = env.GITHUB_REPO_NAME.toLowerCase()
+
+          env.SANITIZED_BRANCH = sanitizedBranch
+          env.IMAGE_NAME = "${repoNameLower}:${sanitizedBranch}-${env.BUILD_NUMBER}"
+
           echo "🐳 Building Docker image: ${env.IMAGE_NAME}"
 
           sh """
@@ -42,7 +45,8 @@ pipeline {
       when { expression { env.CHANGE_ID != null } }
       steps {
         script {
-          def containerName = "${GITHUB_REPO_NAME}-${env.SANITIZED_BRANCH}"
+          def repoNameLower = env.GITHUB_REPO_NAME.toLowerCase()
+          def containerName = "${repoNameLower}-${env.SANITIZED_BRANCH}"
           echo "🚀 Deploying container: ${containerName}"
 
           // Stop old container if exists
