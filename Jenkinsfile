@@ -4,7 +4,7 @@ pipeline {
   environment {
     GITHUB_USER        = 'AryanDadhwal015'
     GITHUB_REPO_NAME   = 'Jenkins-Automation'
-    INSTANCE_IP        = '3.110.216.133'
+    INSTANCE_IP        = '3.110.193.175'
     CONTAINER_PORT     = '80'
     HOST_PORT          = '8002'   // 👈 PR previews will run here
   }
@@ -84,6 +84,40 @@ pipeline {
                    https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO_NAME}/issues/${env.CHANGE_ID}/comments
             """
           }
+        }
+      }
+    }
+  }
+
+
+  /* ==============================
+       🚀 STAGES FOR MAIN DEPLOYMENT
+       ============================== */
+    stage('Deploy to Production (Main)') {
+      when { branch 'main' }
+      steps {
+        script {
+          def repoNameLower = env.GITHUB_REPO_NAME.toLowerCase()
+          def imageName = "${repoNameLower}:main-${env.BUILD_NUMBER}"
+          def containerName = "${repoNameLower}-prod"
+
+          echo "🐳 Building production Docker image: ${imageName}"
+          sh "docker build -t ${imageName} ."
+
+          echo "🚀 Deploying production container to port 80:80"
+          sh """
+            old_id=\$(docker ps -aq -f name=${containerName})
+            if [ ! -z "\$old_id" ]; then
+              echo "🛑 Stopping old production container..."
+              docker stop \$old_id || true
+              docker rm \$old_id || true
+            fi
+
+            echo "▶️ Running new production container..."
+            docker run -d --name ${containerName} -p 80:80 ${imageName}
+          """
+
+          echo "✅ Production is live at: http://${INSTANCE_IP}"
         }
       }
     }
