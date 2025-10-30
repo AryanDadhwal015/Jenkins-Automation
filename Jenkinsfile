@@ -11,6 +11,10 @@ pipeline {
 
   stages {
 
+    /* ==========================
+       🧪 STAGES FOR PR PREVIEW
+       ========================== */
+
     stage('Clone from GitHub') {
       when { expression { env.CHANGE_ID != null } }
       steps {
@@ -87,11 +91,9 @@ pipeline {
         }
       }
     }
-  }
 
-
-  /* ==============================
-       🚀 STAGES FOR MAIN DEPLOYMENT
+    /* ==============================
+       🚀 STAGE FOR MAIN DEPLOYMENT
        ============================== */
     stage('Deploy to Production (Main)') {
       when { branch 'main' }
